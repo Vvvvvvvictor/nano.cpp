@@ -3,6 +3,8 @@
 /cmake-build-*/
 /out/
 /dist/
+/checks/
+/scripts/
 
 # CMake
 CMakeCache.txt

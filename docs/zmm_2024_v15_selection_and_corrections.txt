@@ -1,0 +1,312 @@
+2024 zmm channel selection and corrections
+==========================================
+
+Checked on: 2026-08-22
+Runtime configuration: configs/run/zmm_2024_v15.yaml
+Input format: 2024 NanoAOD v15
+
+Conventions
+-----------
+
+muon_1 = highest-pT muon after corrections; output branches: muon0_*
+muon_2 = second-highest-pT muon after corrections; output branches: muon1_*
+N(condition) = number of objects satisfying condition
+All inequalities preserve the exact boundaries implemented in the code.
+
+
+1. Raw NanoAOD preselection
+---------------------------
+
+These conditions are applied before the event loop using raw NanoAOD branches,
+before the muon corrections:
+
+N(Muon_pt>50 && abs(Muon_eta)<2.4 && Muon_highPtId!=0)>=1
+N(Muon_pt>25 && abs(Muon_eta)<2.4 && Muon_highPtId!=0)>=2
+
+Data jobs run with --run-data also require:
+
+(run, luminosityBlock) in Cert_Collisions2024_378981_386951_Golden.json
+
+Golden JSON:
+/cvmfs/cms-griddata.cern.ch/cat/metadata/DC/Collisions24/latest/Cert_Collisions2024_378981_386951_Golden.json
+
+
+2. Final event selection after corrections
+-------------------------------------------
+
+2.1 Muon candidate
+
+z_muon = muon_pt>30 && abs(muon_eta)<2.4 && muon_highPtId!=0
+
+N(z_muon)==2
+For every other muon, the event is vetoed if:
+muon_pt>15 && abs(muon_eta)<2.4 && muon_looseId
+
+muon_1_pt>=60
+muon_2_pt>=30
+muon_1_charge*muon_2_charge<=0
+
+Physical muons have nonzero charge, so the final condition is equivalent to an
+opposite-sign requirement. The formula above preserves the exact code logic.
+
+2.2 Dimuon Z candidate
+
+leptonicZ = muon_1 + muon_2
+leptonicZ_pt>=400
+70<=leptonicZ_mass<=110
+
+2.3 Loose leptons used for AK8 cleaning
+
+loose_electron = electron_pt>10 &&
+                 abs(electron_eta)<2.5 &&
+                 abs(electron_dxy)<0.05 &&
+                 abs(electron_dz)<0.2 &&
+                 electron_mvaNoIso_WP90 &&
+                 electron_miniPFRelIso_all<0.4
+
+loose_muon = muon_pt>10 &&
+             abs(muon_eta)<2.4 &&
+             abs(muon_dxy)<0.05 &&
+             abs(muon_dz)<0.2 &&
+             muon_looseId &&
+             muon_miniPFRelIso_all<0.4
+
+2.4 Corrected AK8 probe jet
+
+fatjet_pt>200
+abs(fatjet_eta)<2.4
+
+Within abs(fatjet_eta)<2.4, the NanoAOD v15 Jet ID is:
+
+fatjet_neHEF<0.99
+fatjet_neEmEF<0.90
+fatjet_chMultiplicity+fatjet_neMultiplicity>1
+fatjet_chHEF>0.01
+fatjet_chMultiplicity>0
+
+AK8 lepton-cleaning and zmm recoil requirements:
+
+min_DeltaR(fatjet, loose_leptons)>=0.8
+DeltaR(fatjet, muon_1)>0.8
+DeltaR(fatjet, muon_2)>0.8
+
+probe_fatjet = fatjet satisfying all corrected AK8 requirements above
+N(probe_fatjet)>=1
+
+Only the highest-pT probe_fatjet is stored after the selection.
+
+
+3. Output flags, not event-selection cuts
+-----------------------------------------
+
+The following quantities are written to the output ROOT file, but the current
+zmm producer does not use them to reject events.
+
+3.1 Muon trigger flag
+
+passMuTrig = HLT_Mu50 || HLT_TkMu50
+
+The trigger flag is not an event cut, although the MC plotting weight still
+includes muonHLTSF.
+
+3.2 MET filter flag
+
+passmetfilters = Flag_goodVertices &&
+                 Flag_globalSuperTightHalo2016Filter &&
+                 Flag_EcalDeadCellTriggerPrimitiveFilter &&
+                 Flag_BadPFMuonFilter &&
+                 Flag_BadPFMuonDzFilter &&
+                 Flag_eeBadScFilter &&
+                 Flag_ecalBadCalibFilter &&
+                 Flag_hfNoisyHitsFilter
+
+3.3 Jet veto map flag
+
+jetVetoFlag=1 means that at least one corrected AK4 jet used in the veto-map
+evaluation is inside a veto region. jetVetoFlag=0 means that no such jet is in
+a veto region. This branch is not used in the zmm event selection.
+
+The cleaned AK4 definition used for ht and other output quantities is also not
+part of the zmm event selection:
+
+ak4jet_pt>25
+abs(ak4jet_eta)<2.4
+NanoAOD_v15_tight_lepton_veto_jet_ID
+min_DeltaR(ak4jet, loose_leptons)>=0.4
+
+
+4. Correction payloads and versions
+-----------------------------------
+
+Every CVMFS directory named latest is a dynamic release directory. The current
+configuration does not pin a dated release. The paths and tags/keys therefore
+describe the current corrections, but the contents of latest may change.
+
+4.1 JEC, JER and MET
+
+Campaign:
+Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest
+
+Payload root:
+/cvmfs/cms-griddata.cern.ch/cat/metadata/JME
+
+Files:
+AK4/SubJet: jet_jerc.json.gz
+AK8:        fatJet_jerc.json.gz
+
+Algorithms:
+AK4 Jet: AK4PFPuppi
+AK8 FatJet: AK8PFPuppi
+SubJet: AK4PFPuppi
+
+JEC tags:
+MC:   Summer24Prompt24_V5_MC
+Data: Summer24Prompt24_V5_DATA
+
+JER tag:
+MC: Summer24Prompt24_JRV2_MC
+
+JEC level: L1L2L3Res
+JES uncertainty source: Total
+JEC/JER correction object version: 6
+correctionlib schema_version: 2
+
+JER smearing tool:
+file = /cvmfs/cms-griddata.cern.ch/cat/metadata/JME/JER-Smearing/latest/jer_smear.json.gz
+key = JERSmear
+correction object version = 1
+
+MET configuration:
+PuppiMET is propagated with type-1 JEC.
+met_xy_corr_era=""
+smear_met=false
+
+Available zmm MC JME variations:
+jes_up, jes_down, jer_up, jer_down, met_up, met_down
+
+4.2 Muon momentum scale and resolution
+
+Campaign:
+Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest
+
+Payload root:
+/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO
+
+Scale/smearing file:
+muon_scalesmearing.json.gz
+correction object version = 2
+correctionlib schema_version = 2
+
+Data: muon scale correction
+MC:   muon scale correction + resolution smearing
+
+MC deterministic smearing input:
+file = data/muon-smearing/stdflat.json.gz
+key = stdflat
+correction object version = 1
+
+Available zmm MC muon variations:
+muon_scale_up, muon_scale_down, muon_smear_up, muon_smear_down
+
+Muon variations rerun the complete dimuon selection with nominal JME.
+JME variations use nominal corrected muons.
+Data supports nominal only.
+
+4.3 Muon efficiency scale factors
+
+The ID and HLT corrections use separate payloads:
+
+ID file:
+/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/muon_Z.json.gz
+
+HLT file:
+/cvmfs/cms-griddata.cern.ch/cat/metadata/MUO/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/muon_HighPt.json.gz
+
+muonHLTSF:
+key = NUM_HLT_DEN_TrkHighPtLooseRelIsoProbes
+minimum_pt = 52
+
+muonIDSF:
+key = NUM_HighPtID_DEN_TrackerMuons
+minimum_pt = 10
+
+Each SF stores nominal, stat_up/down, and syst_up/down values. Plotting uses the
+nominal value.
+
+4.4 Pileup weight
+
+file = /cvmfs/cms-griddata.cern.ch/cat/metadata/LUM/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/puWeights_BCDEFGHI.json.gz
+key = Collisions24_BCDEFGHI_goldenJSON
+correction object version = 0
+correctionlib schema_version = 2
+
+puWeight uses the nominal variation. puWeightUp and puWeightDown are also
+stored.
+
+4.5 Jet veto map
+
+file = /cvmfs/cms-griddata.cern.ch/cat/metadata/JME/Run3-24CDEReprocessingFGHIPrompt-Summer24-NanoAODv15/latest/jetvetomaps.json.gz
+key = Summer24Prompt24_RunBCDEFGHI_V1
+type = jetvetomap
+correction object version = 1
+correctionlib schema_version = 2
+
+This correction only produces jetVetoFlag. It does not produce an event weight
+or apply an event veto.
+
+4.6 Z/DY NLO electroweak weight
+
+file = data/vjets-ewk/2023-08-11/ZJetsCorr_collection_ewk.json.gz
+key = eej_pTV_EW
+payload release = 2023-08-11
+correction object version = 1
+correctionlib schema_version = 2
+
+This weight is applied only to Zto*, ZJetsTo*, DYto*, and DYJetsTo* samples.
+For gen_V_pt<100, nlo_ew_weight=1.
+nlo_ew_weight = 1 + correction(gen_V_pt, nominal)
+nlo_ew_weight_up/down use 50% of the nominal correction shift from 1 as a
+symmetric uncertainty.
+
+4.7 Top-pT weight
+
+This correction is implemented as a formula in the code and has no external
+payload version.
+
+x = clip(top_pt, 0, 2000)
+f_NNLO(x) = 0.103*exp(-0.0118*x) - 0.000134*x + 0.973
+f_13_to_13p6(x) = 0.991 + 0.000075*x
+SF(x) = f_NNLO(x)*f_13_to_13p6(x)
+topptWeight = sqrt(SF(top_pt)*SF(antitop_pt))
+
+If the event does not contain exactly two generator-level top quarks with
+statusFlags bit 13, topptWeight=1.
+
+4.8 L1 prefiring
+
+2024: l1PreFiringWeight=1
+
+
+5. zmm MC plotting weight
+-------------------------
+
+lumi = 108.96 fb^-1
+
+event_weight = genWeight *
+               puWeight *
+               topptWeight *
+               nlo_ew_weight *
+               l1PreFiringWeight *
+               muonIDSF *
+               muonHLTSF
+
+sample_normalization = cross_section_pb * 1000 * lumi_fb / sum(genWeight)
+plot_weight = event_weight * sample_normalization
+
+When scripts/run_2024_z_channel.sh uses --normalize, the total MC is additionally
+multiplied by data_yield/MC_yield. This factor is a plotting normalization, not
+a physics correction.
+
+LHEScaleWeight and LHEPdfWeight are stored in the nominal ROOT output but are
+not included in the nominal plotting weight above. The current zmm plotting
+weight also does not use a b-tag SF.
