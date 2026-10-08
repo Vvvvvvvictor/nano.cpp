@@ -457,6 +457,7 @@ muon_corrections:
       version: latest
       scale_smearing_file: muon_scalesmearing.json.gz
       sf_file: muon_Z.json.gz
+      high_pt_sf_file: muon_HighPt.json.gz
 
 # NLO electroweak corrections for W/Z+jets and DY samples.
 nlo_ew:

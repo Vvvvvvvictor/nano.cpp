@@ -54,6 +54,7 @@ Related files:
 - `include/nano/producers/HeavyFlavZbbSampleProducer.h`
 - `src/producers/HeavyFlavZbbSampleProducer.cpp`
 - `configs/run/zbb_2024_v15.yaml`
+- `data/trigger-sf/2024/trigger_sf_correctionlib.json`
 - `configs/samples/zbb_2024_v15_DATA.yaml`
 - `configs/samples/zbb_2024_v15_MC.yaml`
 
@@ -67,15 +68,18 @@ Required triggers are `HLT_AK8PFJet380_SoftDropMass30` and `HLT_AK8PFJet500`.
 
 Event selection and processing:
 
-- Requires two JME-corrected AK8 jets.
-- The two jets must have transverse momenta above `450` and `200 GeV`, respectively.
-- The two leading jets must satisfy `|DeltaPhi| > pi/2`.
-- The runtime card defaults to `require_sv_cut: true`; when enabled, at least two secondary vertices are required.
+- Requires at least two JME-corrected AK8 jets passing the common `pT > 200 GeV`, `|eta| < 2.4`, jet-ID, and cleaning selections.
+- All selected AK8 jets are ordered by `globalParT3_Xbb / (globalParT3_Xbb + globalParT3_QCD)`; the score-leading and score-subleading jets must have transverse momenta above `400` and `200 GeV`, respectively.
+- The score-leading jet must pass the MP-or-higher Xbb working point, `globalParT3_Xbb / (globalParT3_Xbb + globalParT3_QCD) > 0.95`; non-finite scores and non-positive denominators are rejected.
+- The two score-ordered jets must satisfy `|DeltaPhi| > pi/2`.
+- The 2024 runtime card sets `require_sv_cut: false`; when enabled, at least two secondary vertices are required.
 - A jet is marked as qualified only when it has exactly two linked subjets.
 - At least one of the two probe jets must be qualified.
-- Both leading probe jets are written to the output; `fj_2_*` branches are generated from the corresponding `fj_1_*` branches.
-- Adds `passHTTrig`, recording `HLT_AK8PFJet380_SoftDropMass30`.
+- Both score-ordered probe jets are written to the output; `fj_2_*` branches are generated from the corresponding `fj_1_*` branches.
+- Adds `passHTTrig`, recording the OR of `HLT_AK8PFJet380_SoftDropMass30` and `HLT_AK8PFJet500`.
+- Adds `passHTTrigPt`, which additionally requires the highest-pT selected AK8 jet to exceed 380 GeV for the 380 trigger or 500 GeV for the 500 trigger. Events failing this flag remain in the output.
 - Adds `genVpt`, recording the generator transverse momentum of a hard-process W/Z; if no hard-process copy is found, the maximum W/Z `pT` is used.
+- Applies the event-level 2024 OR trigger SF once per MC event using the original highest-pT cleaned AK8 `FatJet_pt` and `FatJet_msoftdrop`. The output includes `fatjetHLTSF`, its statistical variations, the query coordinates, and `fatjetHLTSF_valid`; invalid or out-of-range bins retain weight 1 and are not filtered.
 
 Sample configuration:
 

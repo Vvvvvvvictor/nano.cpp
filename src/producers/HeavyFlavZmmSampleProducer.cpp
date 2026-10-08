@@ -36,7 +36,8 @@ void fill_sf(OutputModel &out, const std::string &name, const MuonSFResult &sf) 
  *
  * Event selection implemented in this producer
  * - Apply the configured muon scale correction and MC resolution smearing.
- * - Require exactly two isolated opposite-sign muons with pt >= 60/30 GeV.
+ * - Require exactly two HighPtID opposite-sign muons with pt >= 60/30 GeV.
+ * - Veto events containing an additional loose-ID muon.
  * - Require dimuon pt >= 400 GeV and 70 <= mass <= 110 GeV.
  * - Require a corrected AK8 jet separated from both muons by DeltaR > 0.8.
  * - Keep only the leading separated AK8 jet for output.
@@ -64,7 +65,7 @@ void HeavyFlavZmmSampleProducer::begin_file() {
     out_.branch(prefix + "mass", 0.0f);
     out_.branch(prefix + "miniIso", 0.0f);
   }
-  for (const auto *name : {"muonHLTSF", "muonIDSF", "muonISOSF", "muonIDISOSF"}) {
+  for (const auto *name : {"muonHLTSF", "muonIDSF"}) {
     book_sf(out_, name);
   }
 }
@@ -95,14 +96,23 @@ bool HeavyFlavZmmSampleProducer::select_muons(Event &event, JmeVariation variati
   muon_correction_.apply(event.get<MuonVariationsCalculator::result_t>("muon_variations"), variation, muons);
   std::vector<ObjectView> selected;
   for (auto &muon : muons) {
-    const auto passes_id = (muon.pt() > 15.0f && muon.get<bool>("looseId")) ||
-                           (muon.pt() > 30.0f && muon.get<std::int32_t>("highPtId") != 0);
-    if (passes_id && std::abs(muon.eta()) < 2.4f && muon.get<std::int32_t>("pfIsoId") > 1) {
+    if (muon.pt() > 30.0f && std::abs(muon.eta()) < 2.4f &&
+        muon.get<std::int32_t>("highPtId") != 0) {
       selected.push_back(muon);
     }
   }
   if (selected.size() != 2U) {
     return false;
+  }
+  for (const auto &muon : muons) {
+    const auto is_selected = std::any_of(
+        selected.begin(), selected.end(), [&muon](const auto &candidate) {
+          return candidate.index() == muon.index();
+        });
+    if (!is_selected && muon.pt() > 15.0f && std::abs(muon.eta()) < 2.4f &&
+        muon.get<bool>("looseId")) {
+      return false;
+    }
   }
   std::sort(selected.begin(), selected.end(), [](const auto &a, const auto &b) { return a.pt() > b.pt(); });
   if (selected[0].pt() < 60.0f || selected[1].pt() < 30.0f ||
@@ -154,16 +164,11 @@ bool HeavyFlavZmmSampleProducer::analyze_variation(Event &event, const JmeEventR
   }
 
   if (event.is_mc()) {
-    const auto hlt = muon_correction_.scale_factor(
-        muons, "NUM_Mu50_or_CascadeMu100_or_HighPtTkMu100_DEN_CutBasedIdTrkHighPt_and_TkIsoLoose", 52.0f);
+    const auto hlt = muon_correction_.high_pt_scale_factor(
+        muons, "NUM_HLT_DEN_TrkHighPtLooseRelIsoProbes", 52.0f);
     const auto id = muon_correction_.scale_factor(muons, "NUM_HighPtID_DEN_TrackerMuons", 10.0f);
-    const auto iso = muon_correction_.scale_factor(muons, "NUM_LooseRelTkIso_DEN_HighPtID", 10.0f);
     fill_sf(out_, "muonHLTSF", hlt);
     fill_sf(out_, "muonIDSF", id);
-    fill_sf(out_, "muonISOSF", iso);
-    fill_sf(out_, "muonIDISOSF",
-            {id.nominal * iso.nominal, id.stat_up * iso.stat_up, id.stat_down * iso.stat_down,
-             id.syst_up * iso.syst_up, id.syst_down * iso.syst_down});
   }
   return true;
 }

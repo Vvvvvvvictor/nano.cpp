@@ -33,11 +33,14 @@ public:
              std::vector<ObjectView> &muons) const;
   MuonSFResult scale_factor(const std::vector<ObjectView> &muons, const std::string &correction_key,
                             float minimum_pt) const;
+  MuonSFResult high_pt_scale_factor(const std::vector<ObjectView> &muons,
+                                    const std::string &correction_key, float minimum_pt) const;
 
 private:
   MuonVariationsCalculator mc_calculator_;
   MuonVariationsCalculator data_calculator_;
   std::shared_ptr<correction::CorrectionSet> scale_factors_;
+  std::shared_ptr<correction::CorrectionSet> high_pt_scale_factors_;
 };
 
 }  // namespace nano

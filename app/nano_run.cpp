@@ -349,6 +349,7 @@ nano::ProducerConfig make_config(const YAML::Node &settings, const std::string &
           item.second["version"] ? item.second["version"].as<std::string>() : "latest",
           item.second["scale_smearing_file"] ? item.second["scale_smearing_file"].as<std::string>() : "muon_scalesmearing.json.gz",
           item.second["sf_file"] ? item.second["sf_file"].as<std::string>() : "muon_Z.json.gz",
+          item.second["high_pt_sf_file"].as<std::string>(),
       };
     }
   }

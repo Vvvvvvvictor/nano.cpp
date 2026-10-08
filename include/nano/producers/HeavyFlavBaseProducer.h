@@ -51,6 +51,7 @@ struct MuonEraConfig {
   std::string version = "latest";
   std::string scale_smearing_file = "muon_scalesmearing.json.gz";
   std::string sf_file = "muon_Z.json.gz";
+  std::string high_pt_sf_file = "muon_HighPt.json.gz";
 };
 
 struct JetVetoMapEraConfig {

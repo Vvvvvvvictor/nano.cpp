@@ -13,6 +13,7 @@ preselection: Sum$(abs(FatJet_eta)<2.4)>1
 
 required_triggers:
   - HLT_AK8PFJet380_SoftDropMass30
+  - HLT_AK8PFJet500
 
 output:
   include_lhe_weights: true
@@ -23,4 +24,5 @@ additional_read_branches:
 
 channels:
   zbb:
-    require_sv_cut: true
+    require_sv_cut: false
+    fatjet_hlt_sf_file: data/trigger-sf/2024/trigger_sf_correctionlib.json

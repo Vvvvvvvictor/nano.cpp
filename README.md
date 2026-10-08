@@ -67,7 +67,7 @@ The implemented channels are:
 - `muon`: a heavy-flavour muon control region targeting semileptonic ttbar-like phase space, enriched in boosted top/W jets.
 - `minimal`: a lightweight boosted-AK8 stream that runs the shared lepton cleaning, JME, and fatjet preparation, then keeps the leading cleaned AK8 jet above the configured `channels.minimal.leading_fatjet_pt_min` threshold.
 - `qcd`: a dijet control region that retains the two leading cleaned AK8 jets and requires at least one qualified fatjet satisfying the soft-drop mass selection, with secondary-vertex matching enabled by default. The region is enriched in heavy-flavor QCD jets and provides gluon-enriched proxy samples for X->bb/cc calibration studies, including sfBDT-based methods.
-- `zbb`: a 2024 NanoAOD v15 boosted dijet control region requiring two corrected AK8 jets with leading/subleading pT >= 400/200 GeV and |DeltaPhi| >= pi/2. It stores both probe jets and can require at least two secondary vertices.
+- `zbb`: a 2024 NanoAOD v15 boosted dijet control region requiring the two highest-GlobalParT-score corrected AK8 jets with pT > 400/200 GeV, a score-leading Xbb value above the MP threshold (0.95), and |DeltaPhi| >= pi/2. It stores `passHTTrig` and `passHTTrigPt` for the 380/500 GeV single-jet triggers and applies the event-level fatjet HLT SF once per MC event.
 - `zmm`: a 2024 NanoAOD v15 boosted `Z -> mumu` recoil control region requiring exactly two isolated opposite-sign muons with pT >= 60/30 GeV, dimuon pT >= 400 GeV, and 70 <= m(mumu) <= 110 GeV. It stores the leading corrected AK8 jet separated from both muons and provides muon scale/smearing variations and efficiency scale factors.
 
 Main files:
@@ -144,6 +144,17 @@ and zmm cards preserve the input `LHEScaleWeight` and `LHEPdfWeight` vectors,
 including their metadata, for later theory-uncertainty studies. Their NLO EW
 outputs include symmetric 50% correction uncertainties. Other channels can
 enable the same LHE preservation with `output.include_lhe_weights=true`.
+
+The 2024 zbb card reads its fatjet trigger payload from
+`data/trigger-sf/2024/trigger_sf_correctionlib.json`. The SF coordinates are
+the original NanoAOD `FatJet_pt` and `FatJet_msoftdrop` of the highest-pT AK8
+passing the common jet-ID and lepton-cleaning requirements. `fatjetHLTSF` is
+applied once per MC event; invalid or out-of-range bins use one and set
+`fatjetHLTSF_valid` to false.
+The [trigger-SF README](data/trigger-sf/README.md) documents the derivation
+settings, correction interface and Condor workflow.
+The default zbb plotting weight requires this branch, so existing zbb ntuples
+must be regenerated before plotting.
 
 `--input-files` accepts one file or a comma-separated list. Local paths, `root://...` paths, and `/store/...` paths are supported.
 

@@ -35,6 +35,29 @@ float evaluate_sf(const correction::Correction::Ref &corr,
                       static_cast<double>(muon.pt()), variation}));
 }
 
+MuonSFResult scale_factor_impl(
+    const std::shared_ptr<correction::CorrectionSet> &scale_factors,
+    const std::vector<ObjectView> &muons, const std::string &correction_key,
+    float minimum_pt) {
+  const auto corr = scale_factors->at(correction_key);
+  float nominal = 1.0f;
+  float stat_up = 1.0f;
+  float stat_down = 1.0f;
+  float syst_up = 1.0f;
+  float syst_down = 1.0f;
+  for (const auto &muon : muons) {
+    const auto nominal_value = evaluate_sf(corr, muon, "nominal", minimum_pt);
+    const auto stat_value = evaluate_sf(corr, muon, "stat", minimum_pt);
+    const auto stat_delta = std::abs(stat_value);
+    nominal *= nominal_value;
+    stat_up *= nominal_value + stat_delta;
+    stat_down *= nominal_value - stat_delta;
+    syst_up *= evaluate_sf(corr, muon, "systup", minimum_pt);
+    syst_down *= evaluate_sf(corr, muon, "systdown", minimum_pt);
+  }
+  return {nominal, stat_up, stat_down, syst_up, syst_down};
+}
+
 std::size_t muon_variation_index(JmeVariation variation) {
   switch (variation) {
   case JmeVariation::MuonScaleUp:
@@ -67,6 +90,7 @@ MuonCorrection::MuonCorrection(const ProducerConfig &config) {
   data_calculator_ = MuonVariationsCalculator::create(scale_smearing_file,
                                                       false, false, "", "");
   scale_factors_ = correction_set(root + "/" + it->second.sf_file);
+  high_pt_scale_factors_ = correction_set(root + "/" + it->second.high_pt_sf_file);
 }
 
 MuonVariationsCalculator::result_t
@@ -119,23 +143,14 @@ void MuonCorrection::apply(const MuonVariationsCalculator::result_t &result,
 MuonSFResult MuonCorrection::scale_factor(const std::vector<ObjectView> &muons,
                                           const std::string &correction_key,
                                           float minimum_pt) const {
-  const auto corr = scale_factors_->at(correction_key);
-  float nominal = 1.0f;
-  float stat_up = 1.0f;
-  float stat_down = 1.0f;
-  float syst_up = 1.0f;
-  float syst_down = 1.0f;
-  for (const auto &muon : muons) {
-    const auto nominal_value = evaluate_sf(corr, muon, "nominal", minimum_pt);
-    const auto stat_value = evaluate_sf(corr, muon, "stat", minimum_pt);
-    const auto stat_delta = std::abs(stat_value);
-    nominal *= nominal_value;
-    stat_up *= nominal_value + stat_delta;
-    stat_down *= nominal_value - stat_delta;
-    syst_up *= evaluate_sf(corr, muon, "systup", minimum_pt);
-    syst_down *= evaluate_sf(corr, muon, "systdown", minimum_pt);
-  }
-  return {nominal, stat_up, stat_down, syst_up, syst_down};
+  return scale_factor_impl(scale_factors_, muons, correction_key, minimum_pt);
+}
+
+MuonSFResult MuonCorrection::high_pt_scale_factor(
+    const std::vector<ObjectView> &muons, const std::string &correction_key,
+    float minimum_pt) const {
+  return scale_factor_impl(high_pt_scale_factors_, muons, correction_key,
+                           minimum_pt);
 }
 
 } // namespace nano
