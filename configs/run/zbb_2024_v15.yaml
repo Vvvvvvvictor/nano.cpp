@@ -25,4 +25,4 @@ additional_read_branches:
 channels:
   zbb:
     require_sv_cut: false
-    fatjet_hlt_sf_file: data/trigger-sf/2024/trigger_sf_correctionlib.json
+    fatjet_hlt_sf_file: data/trigger-sf/2024/trigger_sf_gptmass_x2p_correctionlib.json

@@ -15,13 +15,14 @@ namespace nano {
 
 namespace {
 
-constexpr std::string_view kHltSfKey = "zbb_2024_or_trigger_sf";
-constexpr std::string_view kHltSfValidKey = "zbb_2024_or_trigger_sf_valid";
-constexpr std::string_view kHltSfStatusKey = "zbb_2024_or_trigger_sf_status";
+constexpr std::string_view kHltSfKey = "zbb_2024_or_trigger_sf_gptmass_x2p";
+constexpr std::string_view kHltSfValidKey = "zbb_2024_or_trigger_sf_gptmass_x2p_valid";
+constexpr std::string_view kHltSfStatusKey = "zbb_2024_or_trigger_sf_gptmass_x2p_status";
 
 struct HltSfValues {
   float pt = -1.0f;
   float msd = -1.0f;
+  float gptmass_x2p = -1.0f;
   float nominal = 1.0f;
   float stat_up = 1.0f;
   float stat_down = 1.0f;
@@ -109,6 +110,7 @@ void HeavyFlavZbbSampleProducer::begin_file() {
   out_.branch("fatjetHLTSF_valid", false);
   out_.branch("fatjetHLTSF_pt", -1.0f);
   out_.branch("fatjetHLTSF_msd", -1.0f);
+  out_.branch("fatjetHLTSF_gptmass_x2p", -1.0f);
 }
 
 bool HeavyFlavZbbSampleProducer::analyze_common(Event &event) {
@@ -122,7 +124,7 @@ void HeavyFlavZbbSampleProducer::prepare_hlt_sf(Event &event) const {
   const auto loose_leptons = event.get<std::vector<ObjectView>>("looseLeptons");
   auto fatjets = event.collection(fatjet_name_).objects();
   float leading_pt = -std::numeric_limits<float>::infinity();
-  // Use the original NanoAOD coordinates; JME/raw-factor values are not used.
+  // Query the highest-pT cleaned probe using original NanoAOD coordinates.
   for (const auto &fatjet : fatjets) {
     const auto pt = fatjet.pt();
     const auto eta = fatjet.eta();
@@ -141,15 +143,18 @@ void HeavyFlavZbbSampleProducer::prepare_hlt_sf(Event &event) const {
     values.pt = pt;
     const auto msd = fatjet.get<float>("msoftdrop");
     values.msd = std::isfinite(msd) ? msd : -1.0f;
+    const auto mass = fatjet.mass() * (1.0f - fatjet.get<float>("rawFactor")) *
+                      fatjet.get<float>("globalParT3_massCorrX2p");
+    values.gptmass_x2p = std::isfinite(mass) ? mass : -1.0f;
   }
   if (!hlt_sf_correction_ || !hlt_sf_validity_ || !hlt_sf_status_ || values.pt < 200.0f || values.pt >= 1500.0f ||
-      values.msd < 0.0f || values.msd >= 500.0f) {
+      values.gptmass_x2p < 0.0f || values.gptmass_x2p >= 500.0f) {
     event.set("fatjet_hlt_sf", values);
     return;
   }
 
   const std::vector<correction::Variable::Type> coordinates = {static_cast<double>(values.pt),
-                                                                static_cast<double>(values.msd)};
+                                                                static_cast<double>(values.gptmass_x2p)};
   const auto valid = hlt_sf_validity_->evaluate(coordinates);
   const auto status = hlt_sf_status_->evaluate(coordinates);
   if (!std::isfinite(valid) || !std::isfinite(status) || valid < 0.5 || status < 0.5) {
@@ -158,7 +163,7 @@ void HeavyFlavZbbSampleProducer::prepare_hlt_sf(Event &event) const {
   }
 
   const auto evaluate = [&](const char *variation) {
-    return hlt_sf_correction_->evaluate({static_cast<double>(values.pt), static_cast<double>(values.msd),
+    return hlt_sf_correction_->evaluate({static_cast<double>(values.pt), static_cast<double>(values.gptmass_x2p),
                                          std::string(variation)});
   };
   const auto nominal = evaluate("nominal");
@@ -184,6 +189,7 @@ void HeavyFlavZbbSampleProducer::fill_hlt_sf(Event &event) {
   out_.fill("fatjetHLTSF_valid", values.valid);
   out_.fill("fatjetHLTSF_pt", values.pt);
   out_.fill("fatjetHLTSF_msd", values.msd);
+  out_.fill("fatjetHLTSF_gptmass_x2p", values.gptmass_x2p);
 }
 
 bool HeavyFlavZbbSampleProducer::analyze_variation(Event &event, const JmeEventResult &jme_result, JmeVariation variation) {
