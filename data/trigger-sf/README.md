@@ -8,8 +8,11 @@ ParticleNet requirement, or a separate online bb-tag SF.
 
 ## Layout
 
-- `2024/trigger_sf_correctionlib.json`: the soft-drop payload used by
-  `configs/run/zbb_2024_v15.yaml`. Running the derivation does not replace it.
+- `2024/trigger_sf_gptmass_x2p_correctionlib.json`: the 2026-09-28 X2p payload used by
+  `configs/run/zbb_2024_v15.yaml`. Its SHA-256 is
+  `e668d8d06a1137ba92375e4588260b18b9ced43afa802864c3fea1eadcbccf3b`.
+- `2024/trigger_sf_correctionlib.json`: the preserved soft-drop payload.
+  Running the derivation does not replace either production payload.
 - `derive/measure_trigger_sf.py`: measurement, chunk merging, plots and schema inspection.
 - `derive/selection.hxx`: ROOT RDataFrame control-region selection.
 - `derive/config.json` and `derive/config_gptmass_x2p.json`: soft-drop and X2p configurations.
@@ -124,11 +127,11 @@ data/trigger-sf/derive/run.sh query \
   data/trigger-sf/2024/trigger_sf_correctionlib.json 300 60 --variation nominal
 ```
 
-The Zbb analysis uses the original highest-pT cleaned AK8 pT and soft-drop mass
-and applies the SF once per MC event. Its handling of invalid/out-of-range
+The Zbb analysis uses the original highest-pT cleaned AK8 pT and X2p mass
+and applies the SF once per MC event. The mass coordinate is stored in
+`fatjetHLTSF_gptmass_x2p`; `fatjetHLTSF_msd` still stores soft-drop mass. Its handling of invalid/out-of-range
 queries is weight 1 with `fatjetHLTSF_valid=false`; this is analysis behavior,
-not a value stored in invalid derivation bins. X2p is an alternative derivation
-and does not change the active soft-drop analysis payload.
+not a value stored in invalid derivation bins. The 2026-09-28 X2p result is now the active analysis payload.
 
 ## Local checks and Condor workflow
 

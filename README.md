@@ -146,8 +146,9 @@ outputs include symmetric 50% correction uncertainties. Other channels can
 enable the same LHE preservation with `output.include_lhe_weights=true`.
 
 The 2024 zbb card reads its fatjet trigger payload from
-`data/trigger-sf/2024/trigger_sf_correctionlib.json`. The SF coordinates are
-the original NanoAOD `FatJet_pt` and `FatJet_msoftdrop` of the highest-pT AK8
+`data/trigger-sf/2024/trigger_sf_gptmass_x2p_correctionlib.json`, derived on
+2026-09-28. The SF coordinates are the original NanoAOD `FatJet_pt` and
+`FatJet_mass * (1 - FatJet_rawFactor) * FatJet_globalParT3_massCorrX2p` of the highest-pT AK8
 passing the common jet-ID and lepton-cleaning requirements. `fatjetHLTSF` is
 applied once per MC event; invalid or out-of-range bins use one and set
 `fatjetHLTSF_valid` to false.
