@@ -91,6 +91,8 @@ const std::vector<T> &Event::vector(std::string_view branch_name) const {
     return *std::get<std::shared_ptr<std::vector<std::uint8_t>>>(field);
   } else if constexpr (std::is_same_v<T, std::uint16_t>) {
     return *std::get<std::shared_ptr<std::vector<std::uint16_t>>>(field);
+  } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+    return *std::get<std::shared_ptr<std::vector<std::uint64_t>>>(field);
   } else if constexpr (std::is_same_v<T, std::int32_t>) {
     return *std::get<std::shared_ptr<std::vector<std::int32_t>>>(field);
   } else if constexpr (std::is_same_v<T, std::int16_t>) {

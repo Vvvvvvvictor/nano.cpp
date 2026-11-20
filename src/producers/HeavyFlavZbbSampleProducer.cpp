@@ -2,6 +2,7 @@
 
 #include "nano/core/Collection.h"
 #include "nano/core/Helpers.h"
+#include "nano/core/TriggerProbe.h"
 
 #include <algorithm>
 #include <cmath>
@@ -22,21 +23,15 @@ namespace nano {
  *   base-producer helpers.
  * - Compute AK4/AK8/SubJet JME corrections once, then apply the requested
  *   variation before selecting the cleaned AK8 jets.
- * - Require at least two cleaned AK8 jets with pt > 200 GeV, |eta| < 2.4,
- *   and the jet-ID requirements implemented by the base producer.
- * - Rank the corrected AK8 jets by their cached `xbb_discr` values and select
- *   the two highest-score jets, requiring pt > 400/200 GeV in score order.
+ * - Require two cleaned AK8 jets with |eta| < 2.5. Choose the highest-Xbb
+ *   jet above 250 GeV and the highest-pt remaining jet above 200 GeV.
  * - When channels.zbb.apply_xbb_cut is enabled (disabled by default), require
  *   the score-leading jet to pass GPT > 0.7, ParticleNetLegacy > 0.9, or
  *   Run-3 ParticleNet > 0.9. Missing discriminator inputs have value -999.
- * - Require the two selected AK8 jets to satisfy |DeltaPhi| >= pi/2.
- * - For v15, evaluate the event trigger-OR SF using the highest-pt jet among
- *   all cleaned AK8 jets before Xbb ranking/truncation, with corrected pt and
- *   rawMass * globalParT3_massCorrX2p. Recompute the probe for each JME state.
- * - Keep both selected AK8 jets for output. Store the configured HLT decisions
- *   individually without applying a trigger OR veto in this producer.
- * - Store fatjetHLTSF and stat shifts separately from genWeight; Data and
- *   unavailable/invalid SFs have unit weights, with validity/status diagnostics.
+ * - Store the highest-pT cleaned AK8 probe coordinates before Xbb ranking.
+ * - Store the matched passHTTrig decision. Match within DeltaR < 0.4 and
+ *   require jet pt > 400 GeV if Jet380 mass fires, or > 500 GeV for Jet500 only.
+ *   Keep the individual HLT path bits for downstream trigger studies.
  */
 
 HeavyFlavZbbSampleProducer::HeavyFlavZbbSampleProducer(ProducerConfig config)
@@ -44,11 +39,7 @@ HeavyFlavZbbSampleProducer::HeavyFlavZbbSampleProducer(ProducerConfig config)
         config.channel = "zbb";
         return config;
       }()),
-      nlo_ew_weight_producer_(config_),
-      trigger_sf_([this] {
-        const auto it = config_.channel_options.strings.find("fatjet_hlt_sf_file");
-        return it == config_.channel_options.strings.end() ? std::string{} : it->second;
-      }(), "zbb_" + config_.era + "_or_trigger_sf_gptmass_x2p") {
+      nlo_ew_weight_producer_(config_) {
   const auto it = config_.channel_options.bools.find("apply_xbb_cut");
   if (it != config_.channel_options.bools.end()) {
     apply_xbb_cut_ = it->second;
@@ -60,10 +51,8 @@ HeavyFlavZbbSampleProducer::HeavyFlavZbbSampleProducer(ProducerConfig config)
 void HeavyFlavZbbSampleProducer::begin_file() {
   HeavyFlavBaseProducer::begin_file();
   nlo_ew_weight_producer_.begin_file(out_);
-  for (const auto *name : {"fatjetHLTSF", "fatjetHLTSF_stat_up", "fatjetHLTSF_stat_down"}) out_.branch(name, 1.f);
-  for (const auto *name : {"fatjetHLTSF_pt", "fatjetHLTSF_msd", "fatjetHLTSF_gptmass_x2p"}) out_.branch(name, -1.f);
-  out_.branch("fatjetHLTSF_valid", false);
-  out_.branch("fatjetHLTSF_status", std::int32_t{0});
+  out_.branch("passHTTrig", false);
+  for (const auto *name : {"trigger_probe_pt", "trigger_probe_msd", "trigger_probe_gptmass_x2p"}) out_.branch(name, -1.f);
   for (std::size_t index = 0; index < output_fatjet_count(); ++index) {
     const auto prefix = "fj_" + std::to_string(index + 1U) + "_";
     if (config_.nano_version == "v9" || config_.nano_version == "v15") {
@@ -116,38 +105,62 @@ bool HeavyFlavZbbSampleProducer::analyze_common(Event &event) {
   return true;
 }
 
-// Apply one JME variation, select the two score-leading jets, and fill the
+// Apply one JME variation, select the Z candidate and second jet, and fill the
 // output for accepted events. Nominal and each requested variation use the
 // same cached discriminator and generator-level weights.
 bool HeavyFlavZbbSampleProducer::analyze_variation(Event &event, const JmeEventResult &jme_result, JmeVariation variation) {
-  apply_jme_and_select_jets(event, jme_result, variation);
-  auto fatjets = event.get<std::vector<ObjectView>>("fatjets");
-  constexpr float pi = 3.14159265358979323846f;
+  apply_jme_and_select_jets(event, jme_result, variation, 2.5f);
+  const auto &fatjets = event.get<std::vector<ObjectView>>("fatjets");
   if (fatjets.size() < 2U) {
     return false;
   }
-  // Capture all cleaned jets before Xbb ranking/truncation. Recompute for each JME state.
-  std::vector<TriggerSFProbe> trigger_probes;
+  // Choose from all cleaned jets before Xbb ranking for this JME variation.
+  TriggerProbe probe;
   if (config_.nano_version == "v15") {
     for (const auto &jet : fatjets) {
-      trigger_probes.push_back({jet.pt(), jet.get<float>("rawMass") * jet.get<float>("globalParT3_massCorrX2p"),
-                                jet.get<float>("msoftdrop")});
+      probe.consider(jet.pt(), jet.get<float>("rawMass") * jet.get<float>("globalParT3_massCorrX2p"),
+                     jet.get<float>("msoftdrop"));
     }
   }
-  const auto trigger_sf = trigger_sf_.evaluate(trigger_probes, event.is_mc());
-  // Leading/subleading refer to score order. Equal scores retain the
-  // corrected-pt order established by the base-producer jet selection.
-  std::stable_sort(fatjets.begin(), fatjets.end(), [](const auto &a, const auto &b) {
-    return a.template get<float>("xbb_discr") > b.template get<float>("xbb_discr");
-  });
-  if (fatjets[0].pt() <= 400.0f || fatjets[1].pt() <= 200.0f ||
-      std::abs(delta_phi(fatjets[0], fatjets[1])) < 0.5f * pi) {
+  auto candidate = fatjets.end();
+  float best_score = -std::numeric_limits<float>::infinity();
+  for (auto jet = fatjets.begin(); jet != fatjets.end(); ++jet) {
+    const float score = jet->get<float>("xbb_discr");
+    if (jet->pt() > 250.f && score > best_score) {
+      candidate = jet;
+      best_score = score;
+    }
+  }
+  if (candidate == fatjets.end()) {
     return false;
+  }
+  const std::vector<ObjectView> selected{*candidate, candidate == fatjets.begin() ? fatjets[1] : fatjets[0]};
+
+  const bool mass_path = safe_bool(event, "HLT_AK8PFJet380_SoftDropMass30");
+  const bool jet500_path = safe_bool(event, "HLT_AK8PFJet500");
+  bool pass_hlt = false;
+  if (mass_path || jet500_path) {
+    // FatJet bits 0 and 2 identify the corrected PF and soft-drop collections.
+    // The NanoAOD stores these collection bits and the event HLT decisions.
+    const float minimum_pt = mass_path ? 400.f : 500.f;
+    const auto trigger_objects = event.collection("TrigObj").objects();
+    pass_hlt = std::any_of(fatjets.begin(), fatjets.end(), [&](const ObjectView &jet) {
+      return jet.pt() > minimum_pt && std::any_of(trigger_objects.begin(), trigger_objects.end(),
+          [&](const ObjectView &object) {
+            if (object.get<std::int32_t>("id") != 6) {
+              return false;
+            }
+            const auto bits = object.get<std::uint64_t>("filterBits");
+            const bool matches_path = (mass_path && (bits & (1ULL << 2))) ||
+                                      (jet500_path && (bits & (1ULL << 0)) && object.pt() >= 500.f);
+            return matches_path && delta_r(jet, object) < 0.4f;
+          });
+    });
   }
 
   if (apply_xbb_cut_) {
     // Evaluate all three taggers on the score-leading jet for this variation.
-    const auto &leading_jet = fatjets[0];
+    const auto &leading_jet = selected[0];
     const auto read_score = [&](const std::string &attribute) {
       if (!event.has_physical_branch(fatjet_name_ + "_" + attribute)) {
         return -999.0f;
@@ -175,24 +188,17 @@ bool HeavyFlavZbbSampleProducer::analyze_variation(Event &event, const JmeEventR
       return false;
     }
   }
-  fatjets.resize(2);
-
   // Base filling resets the output. Copy the cached EWK weights afterwards;
   // keep them separate from genWeight for downstream event weighting.
   fill_base_event_info(event, variation);
   nlo_ew_weight_producer_.fill(event, out_);
-  out_.fill("fatjetHLTSF", trigger_sf.nominal);
-  out_.fill("fatjetHLTSF_stat_up", trigger_sf.stat_up);
-  out_.fill("fatjetHLTSF_stat_down", trigger_sf.stat_down);
-  out_.fill("fatjetHLTSF_valid", trigger_sf.valid);
-  out_.fill("fatjetHLTSF_status", std::int32_t{trigger_sf.status});
-  out_.fill("fatjetHLTSF_pt", trigger_sf.pt);
-  out_.fill("fatjetHLTSF_gptmass_x2p", trigger_sf.mass);
-  out_.fill("fatjetHLTSF_msd", trigger_sf.msd);
-  for (std::size_t index = 0; index < fatjets.size(); ++index) {
-    fill_fatjet_info(event, fatjets, index);
+  out_.fill("trigger_probe_pt", probe.pt);
+  out_.fill("trigger_probe_gptmass_x2p", probe.mass);
+  out_.fill("trigger_probe_msd", probe.msd);
+  for (std::size_t index = 0; index < selected.size(); ++index) {
+    fill_fatjet_info(event, selected, index);
     const auto prefix = "fj_" + std::to_string(index + 1U) + "_";
-    const auto &jet = fatjets[index];
+    const auto &jet = selected[index];
     // Legacy mass is stored directly; Run-3 PNet scales the current JME mass.
     if (config_.nano_version == "v9" || config_.nano_version == "v15") {
       out_.fill(prefix + "pnetmass", jet.get<float>(config_.nano_version == "v9" ? "particleNet_mass" : "particleNetLegacy_mass"));
@@ -207,8 +213,8 @@ bool HeavyFlavZbbSampleProducer::analyze_variation(Event &event, const JmeEventR
       out_.fill(prefix + "gptmass_generic", raw_mass * jet.get<float>("globalParT3_massCorrGeneric"));
     }
   }
-  // Preserve each input trigger decision; missing branches are false.
-  // Despite the configuration name, required_triggers is not an event veto here.
+  out_.fill("passHTTrig", pass_hlt);
+  // Keep the individual trigger decisions available for downstream studies.
   for (const auto &trigger : config_.required_triggers) {
     out_.fill(trigger, safe_bool(event, trigger));
   }

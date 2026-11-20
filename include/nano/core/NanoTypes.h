@@ -19,6 +19,7 @@ using FieldPtr = std::variant<
     std::shared_ptr<std::vector<bool>>,
     std::shared_ptr<std::vector<std::uint8_t>>,
     std::shared_ptr<std::vector<std::uint16_t>>,
+    std::shared_ptr<std::vector<std::uint64_t>>,
     std::shared_ptr<std::vector<std::int16_t>>,
     std::shared_ptr<std::vector<std::int32_t>>,
     std::shared_ptr<std::vector<float>>>;

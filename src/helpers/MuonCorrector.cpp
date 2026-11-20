@@ -3,6 +3,7 @@
 #include <correction.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
@@ -94,7 +95,7 @@ std::size_t muon_variation_index(JmeVariation variation) {
 
 } // namespace
 
-MuonCorrector::MuonCorrector(const ProducerConfig &config) {
+MuonCorrector::MuonCorrector(const ProducerConfig &config, bool load_trigger_efficiencies) {
   const auto key = config.era + "_NanoAOD" + config.nano_version;
   const auto it = config.muon_eras.find(key);
   if (it == config.muon_eras.end()) {
@@ -115,8 +116,10 @@ MuonCorrector::MuonCorrector(const ProducerConfig &config) {
     data_calculator_ = std::make_unique<MuonVariationsCalculator>(MuonVariationsCalculator::create(scale_smearing_file,
         false, false, "", ""));
   }
-  trigger_sf_ = std::make_unique<MuonTriggerSF>(config.era, root + "/" + it->second.sf_file,
-                                                it->second.trigger_efficiency_file);
+  if (load_trigger_efficiencies) {
+    trigger_sf_ = std::make_unique<MuonTriggerSF>(config.era, root + "/" + it->second.sf_file,
+                                                  it->second.trigger_efficiency_file);
+  }
   scale_factors_ = correction_set(root + "/" + it->second.sf_file);
   high_pt_scale_factors_ = correction_set(root + "/" + it->second.high_pt_sf_file);
 }
@@ -187,6 +190,64 @@ MuonSFResult MuonCorrector::trigger_or_scale_factor(
     const std::vector<ObjectView> &muons, const std::string &correction_key,
     float minimum_pt) const {
   return trigger_sf_->evaluate(muons, minimum_pt, correction_key);
+}
+
+MuonSFResult MuonCorrector::zmm_id_scale_factor(const std::vector<ObjectView> &muons) const {
+  const auto tight = high_pt_scale_factors_->at("NUM_TightID_DEN_GlobalMuonProbes");
+  const auto high_pt = high_pt_scale_factors_->at("NUM_HighPtID_DEN_GlobalMuonProbes");
+  MuonSFResult result;
+  for (const auto &muon : muons) {
+    const auto &correction = muon.pt() < muon_high_pt_threshold ? tight : high_pt;
+    const double eta = std::abs(muon.eta());
+    // The GlobalMuonProbes ID payloads start at 50 GeV.
+    const double pt = std::max(50.f, muon.pt());
+    const auto evaluate = [&](const char *variation) {
+      return correction->evaluate({eta, pt, std::string(variation)});
+    };
+    const auto nominal = evaluate("nominal");
+    const auto stat = std::abs(evaluate("stat"));
+    const auto syst = std::abs(evaluate("syst"));
+    result.nominal *= nominal;
+    result.stat_up *= nominal + stat;
+    result.stat_down *= nominal - stat;
+    result.syst_up *= nominal + syst;
+    result.syst_down *= nominal - syst;
+  }
+  return result;
+}
+
+MuonSFResult MuonCorrector::zmm_trigger_scale_factor(const std::vector<ObjectView> &muons) const {
+  const auto tight = scale_factors_->at(
+      "NUM_IsoMu24_or_Mu50_or_CascadeMu100_or_HighPtTkMu100_DEN_CutBasedIdTight_and_PFIsoTight");
+  const auto high_pt = scale_factors_->at(
+      "NUM_Mu50_or_CascadeMu100_or_HighPtTkMu100_DEN_CutBasedIdGlobalHighPt_and_TkIsoLoose");
+  constexpr float minimum_pt = 55.f;
+  std::array<double, 5> combined{};
+  MuonSFResult result;
+  for (const auto &muon : muons) {
+    if (muon.pt() <= minimum_pt) {
+      continue;
+    }
+    const auto &correction = muon.pt() < muon_high_pt_threshold ? tight : high_pt;
+    const auto nominal = evaluate_sf(correction, muon, "nominal", minimum_pt);
+    const auto stat = std::abs(evaluate_sf(correction, muon, "stat", minimum_pt));
+    const auto syst = std::abs(evaluate_sf(correction, muon, "syst", minimum_pt));
+    const std::array<double, 5> sf{nominal, nominal + stat, nominal - stat, nominal + syst, nominal - syst};
+    // Combine each systematic state with the same direct SF approximation.
+    for (std::size_t i = 0; i < sf.size(); ++i) {
+      combined[i] = combined[i] + sf[i] - combined[i] * sf[i];
+    }
+    result.source = 3;
+  }
+  if (result.source != 0) {
+    result.nominal = combined[0];
+    result.stat_up = combined[1];
+    result.stat_down = combined[2];
+    result.syst_up = combined[3];
+    result.syst_down = combined[4];
+    result.effstat_up = result.effstat_down = result.nominal;
+  }
+  return result;
 }
 
 } // namespace nano

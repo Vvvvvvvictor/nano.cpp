@@ -181,6 +181,9 @@ nano::ProducerConfig make_config(const YAML::Node &settings, const std::string &
     if (type == "vec_uint16") {
       return nano::BranchType::kVecUInt16;
     }
+    if (type == "vec_uint64") {
+      return nano::BranchType::kVecUInt64;
+    }
     if (type == "vec_int16") {
       return nano::BranchType::kVecInt16;
     }
@@ -226,18 +229,20 @@ nano::ProducerConfig make_config(const YAML::Node &settings, const std::string &
   // read_branches safety checks:
   // - Runtime cards should explicitly list every physical NanoAOD branch the
   //   channel reads.
-  // - required_triggers, stored_tagger_names, and optional LHEScaleWeight can
+  // - required_triggers, stored_tagger_names, and optional LHE weights can
   //   imply extra physical branches; auto-add them for backward compatibility,
   //   but warn so the card can be made explicit.
-  // - If LHEScaleWeight is listed while output.include_lhe_weights is disabled,
+  // - If LHE weights are listed while output.include_lhe_weights is disabled,
   //   remove it so a stale read_branches entry does not silently read an unused
   //   large vector branch.
   if (!config.include_lhe_weights) {
-    const auto old_size = config.read_branches.size();
-    config.read_branches.erase(std::remove(config.read_branches.begin(), config.read_branches.end(), "LHEScaleWeight"),
-                               config.read_branches.end());
-    if (config.read_branches.size() != old_size) {
-      std::cerr << "Warning: removing LHEScaleWeight from read_branches because output.include_lhe_weights is false.\n";
+    for (const auto *branch : {"LHEScaleWeight", "LHEPdfWeight"}) {
+      const auto old_size = config.read_branches.size();
+      config.read_branches.erase(std::remove(config.read_branches.begin(), config.read_branches.end(), branch),
+                                 config.read_branches.end());
+      if (config.read_branches.size() != old_size) {
+        std::cerr << "Warning: removing " << branch << " from read_branches because output.include_lhe_weights is false.\n";
+      }
     }
   }
   if (!settings["stored_tagger_names"]) {
@@ -267,10 +272,14 @@ nano::ProducerConfig make_config(const YAML::Node &settings, const std::string &
       config.read_branches.push_back(branch_name);
     }
   }
-  if (config.include_lhe_weights && seen.insert("LHEScaleWeight").second) {
-    std::cerr << "Warning: adding missing branch LHEScaleWeight to read_branches because output.include_lhe_weights is true. "
-                 "Please list it explicitly in read_branches.\n";
-    config.read_branches.push_back("LHEScaleWeight");
+  if (config.include_lhe_weights) {
+    for (const auto *branch : {"LHEScaleWeight", "LHEPdfWeight"}) {
+      if (seen.insert(branch).second) {
+        std::cerr << "Warning: adding missing branch " << branch << " to read_branches because output.include_lhe_weights is true. "
+                     "Please list it explicitly in read_branches.\n";
+        config.read_branches.push_back(branch);
+      }
+    }
   }
   for (const auto &branch_name : config.read_branches) {
     if (config.nano_branch_types.count(branch_name) != 0U) {
@@ -431,6 +440,14 @@ std::vector<std::string> process_one_file_variations(const std::string &input_fi
 
   auto config = make_config(settings, cli.channel);
   config.requested_variations = variations;
+  if (config.include_lhe_weights && !cli.run_data &&
+      std::find(variations.begin(), variations.end(), nano::JmeVariation::Nominal) != variations.end()) {
+    for (const auto *branch : {"LHEPdfWeight", "LHEScaleWeight"}) {
+      if (!tree->GetBranch(branch)) {
+        throw std::runtime_error("Missing required nominal MC LHE branch " + std::string(branch) + " in " + input_file);
+      }
+    }
+  }
   const auto lumi_mask = cli.run_data ? std::make_unique<nano::runtime::LumiMask>(nano::runtime::LumiMask::from_file(data_lumi_mask_path(settings, config)))
                                       : nullptr;
   auto producer_base = make_producer(config);
@@ -477,7 +494,13 @@ std::vector<std::string> process_one_file_variations(const std::string &input_fi
 
   std::vector<std::string> output_files;
   for (auto &item : outputs) {
-    nano::runtime::copy_filtered_runs_tree(*input, item.output->file(), item.selected_lumis);
+    // MC normalization is defined by all generated events, even for an empty
+    // selected output or a variation that accepts no event from this file.
+    if (cli.run_data) {
+      nano::runtime::copy_filtered_runs_tree(*input, item.output->file(), item.selected_lumis);
+    } else {
+      nano::runtime::copy_selected_tree(*input, item.output->file(), "Runs");
+    }
     nano::runtime::copy_filtered_luminosity_blocks_tree(*input, item.output->file(), item.selected_lumis);
     item.output->write();
     std::cout << "input=" << input_file << " processed=" << entry_list.size() << " accepted=" << item.accepted

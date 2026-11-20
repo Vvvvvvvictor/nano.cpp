@@ -1,0 +1,46 @@
+# Zmm channel runtime card for 2025 v15.
+
+extends:
+  - ../base.yaml
+  - ../common/nano_branches_v15.yaml
+  - ../common/read_branches_v15.yaml
+
+era: "2025"
+nano_version: "v15"
+
+preselection: Sum$(Muon_pt>15 && abs(Muon_eta)<2.4)>1
+
+required_triggers:
+  - HLT_Mu50
+  - HLT_CascadeMu100
+  - HLT_HighPtTkMu100
+
+# Keep recoil-jet kinematics without tagger scores or subjet details.
+output:
+  fill_subjet_info: false
+
+stored_tagger_names: []
+
+additional_read_branches:
+  - TrigObj_id
+  - TrigObj_eta
+  - TrigObj_phi
+  - TrigObj_filterBits
+  - LHE_Vpt
+  - LHEPart_pdgId
+  - LHEPart_pt
+  - Muon_charge
+  - Muon_highPtId
+  - Muon_nTrackerLayers
+
+muon_corrections:
+  payload_dir: /cvmfs/cms-griddata.cern.ch/cat/metadata/MUO
+  smearing_file: data/muo-derived/randomNumbers.json.gz
+  campaigns:
+    2025_NanoAODv15:
+      payload_subdir: Run3-25Prompt-Summer24-NanoAODv15
+
+channels:
+  zmm:
+    require_fatjet: true  # Require a cleaned, muon-separated AK8 jet with pt > 200 GeV.
+    nlo_ewk_payload_dir: data/k-factors  # TODO: Check whether changes are needed when adapting to Run 2.

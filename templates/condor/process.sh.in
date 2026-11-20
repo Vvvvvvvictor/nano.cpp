@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+# Create the transfer marker before setup so early failures and evictions can
+# return it to HTCondor.
+touch "$(pwd)/dummy.cc"
+
 sleep $(( ( RANDOM % 200 ) + 1 ))
 
 source /cvmfs/sft.cern.ch/lcg/views/LCG_108/x86_64-el9-gcc13-opt/setup.sh

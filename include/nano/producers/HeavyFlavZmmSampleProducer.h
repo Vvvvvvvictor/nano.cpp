@@ -19,6 +19,7 @@ private:
   NloEWWeightProducer nlo_ew_weight_producer_;
   void select_muons(Event &event, JmeVariation variation);
   MuonCorrector muon_corrector_;
+  bool require_fatjet_ = true;
 };
 
 }  // namespace nano

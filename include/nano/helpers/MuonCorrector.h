@@ -17,9 +17,11 @@ class CorrectionSet;
 
 namespace nano {
 
+inline constexpr float muon_high_pt_threshold = 200.f;
+
 class MuonCorrector {
 public:
-  explicit MuonCorrector(const ProducerConfig &config);
+  explicit MuonCorrector(const ProducerConfig &config, bool load_trigger_efficiencies = true);
 
   MuonVariationsCalculator::result_t compute(Event &event, const std::vector<ObjectView> &muons) const;
   void apply(const MuonVariationsCalculator::result_t &result, JmeVariation variation,
@@ -30,6 +32,8 @@ public:
                                       const std::string &correction_key, float minimum_pt) const;
   MuonSFResult high_pt_scale_factor(const std::vector<ObjectView> &muons,
                                     const std::string &correction_key, float minimum_pt) const;
+  MuonSFResult zmm_id_scale_factor(const std::vector<ObjectView> &muons) const;
+  MuonSFResult zmm_trigger_scale_factor(const std::vector<ObjectView> &muons) const;
 
 private:
   std::unique_ptr<MuonVariationsCalculator> mc_calculator_;

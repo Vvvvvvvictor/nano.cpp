@@ -476,7 +476,10 @@ inline std::vector<Long64_t> build_entry_list(TTree &tree, const std::string &cu
   }
 
   const std::string list_name = "entrylist_tmp";
-  tree.Draw((">>" + list_name).c_str(), effective_cut.c_str(), "entrylist");
+  // max_entries limits raw entries, so avoid scanning the rest of a remote
+  // file just to reject it with Entry$. This keeps smoke runs bounded in I/O.
+  const auto scan_entries = max_entries < 0 ? total : std::min<Long64_t>(total, max_entries);
+  tree.Draw((">>" + list_name).c_str(), effective_cut.c_str(), "entrylist", scan_entries);
   auto *elist = dynamic_cast<TEntryList *>(gDirectory->Get(list_name.c_str()));
   std::vector<Long64_t> entries;
   if (!elist) {

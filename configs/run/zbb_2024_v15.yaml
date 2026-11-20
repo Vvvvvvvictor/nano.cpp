@@ -8,7 +8,7 @@ extends:
 era: "2024"
 nano_version: "v15"
 
-preselection: Sum$(abs(FatJet_eta)<2.4)>1
+preselection: Sum$(abs(FatJet_eta)<2.5)>1
 
 required_triggers:
   - HLT_AK8PFJet380_SoftDropMass30
@@ -30,6 +30,11 @@ stored_tagger_names:
   - particleNetLegacy_QCD
 
 additional_read_branches:
+  - TrigObj_id
+  - TrigObj_pt
+  - TrigObj_eta
+  - TrigObj_phi
+  - TrigObj_filterBits
   - LHE_Vpt
   - LHEPart_pdgId
   - LHEPart_pt

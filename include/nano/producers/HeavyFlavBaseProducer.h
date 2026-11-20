@@ -130,7 +130,8 @@ protected:
   virtual std::size_t output_fatjet_count() const { return 1U; }
   void prepare_common_objects(Event &event) const;
   void select_leptons(Event &event) const;
-  void apply_jme_and_select_jets(Event &event, const JmeEventResult &jme_result, JmeVariation variation) const;
+  void apply_jme_and_select_jets(Event &event, const JmeEventResult &jme_result, JmeVariation variation,
+                                 float fatjet_abs_eta_max = 2.4f) const;
   void load_gen_history(Event &event, std::vector<ObjectView> &fatjets) const;
   void fill_base_event_info(Event &event, JmeVariation variation);
   void fill_fatjet_info(Event &event, const std::vector<ObjectView> &fatjets, std::size_t fatjet_index);

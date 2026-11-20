@@ -100,6 +100,8 @@ T ObjectView::get(std::string_view attr) const {
       return static_cast<std::int32_t>(event_->vector<std::uint16_t>(branch_name).at(index_));
     }
     return static_cast<std::int32_t>(event_->vector<std::int16_t>(branch_name).at(index_));
+  } else if constexpr (std::is_same_v<T, std::uint64_t>) {
+    return event_->vector<std::uint64_t>(branch_name).at(index_);
   } else if constexpr (std::is_same_v<T, bool>) {
     return event_->vector<bool>(branch_name).at(index_);
   } else if constexpr (std::is_same_v<T, LorentzVector>) {

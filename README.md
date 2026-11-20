@@ -67,8 +67,24 @@ The implemented channels are:
 - `trigsf`: a semileptonic ttbar control region for measuring boosted AK8 event-level trigger efficiencies and data/MC scale factors.
 - `minimal`: a lightweight boosted-AK8 stream that runs the shared lepton cleaning, JME, and fatjet preparation, then keeps the leading cleaned AK8 jet above the configured `channels.minimal.leading_fatjet_pt_min` threshold.
 - `qcd`: a dijet control region that retains the two leading cleaned AK8 jets and requires at least one qualified fatjet satisfying the soft-drop mass selection, with secondary-vertex matching enabled by default. The region is enriched in heavy-flavor QCD jets and provides gluon-enriched proxy samples for X->bb/cc calibration studies, including sfBDT-based methods.
-- `zbb`: a boosted dijet control region with two AK8 jets ranked by their Xbb discriminator scores and an optional Xbb discriminator requirement. The Z→bb fatjet mass peak is used to calibrate the Xbb tagging efficiency.
-- `zmm`: a boosted Z→μμ recoil control region requiring exactly two opposite-sign muons. This complementary control region constrains the inclusive Z+jets cross-section estimate used in the Z→bb-based calibration of the Xbb tagging efficiency.
+- `zbb`: a boosted dijet control region for Xbb tagging calibration. It selects the highest-Xbb AK8 candidate above 250 GeV and a second AK8 above 200 GeV, both with `|eta| < 2.5`. The Xbb threshold is optional. The matched trigger decision is stored in `passHTTrig`.
+- `zmm`: a boosted Z→μμ recoil control region that constrains the inclusive Z+jets cross section. It requires two opposite-sign muons, dimuon pT of at least 400 GeV and a 75–105 GeV mass window. The muon ID switches from Tight ID to tracker or global High-pT ID at 200 GeV. The matched trigger decision is stored in `passMuTrig`.
+
+Both channels retain events regardless of the matched trigger decision. Zbb
+replaces the `fatjetHLTSF*` branches with `passHTTrig` and
+`trigger_probe_{pt,msd,gptmass_x2p}`. The probe coordinates describe the
+highest-pT cleaned AK8 jet before Xbb ranking in each JME variation.
+
+For Zmm MC, `muonHLTSF_source=3` identifies the direct SF approximation.
+It uses the per-muon trigger SF for one eligible muon and
+`SF1 + SF2 - SF1*SF2` for two. The efficiency-stat output branches carry
+the nominal value for this source.
+
+The Zmm channel requires a cleaned, muon-separated AK8 jet with corrected pT
+above 200 GeV by default. Set `channels.zmm.require_fatjet: false` in the run
+card, or pass `--set channels.zmm.require_fatjet=false`, to accept events without
+such a jet. In those events `fj_1_is_qualified` is false and fatjet branches
+retain their default values.
 
 Main files:
 
@@ -134,6 +150,16 @@ Useful options:
 --set output.include_lhe_weights=true
 --variations nominal,jes_up,jes_down
 ```
+
+`output.include_lhe_weights` defaults to `true` for every year and channel and copies both `LHEPdfWeight` and
+`LHEScaleWeight` as float vectors in nominal outputs. Their lengths are stored
+by the vectors themselves. Non-nominal outputs retain empty vectors, and the
+disabled setting omits both branches and their physical input reads. Data contain
+empty vectors. Nominal MC missing either source branch fails before producing
+outputs, including when no events pass the skim. Vector lengths are copied from
+the source without an era-specific PDF/scale prescription.
+The full input `Runs` tree is copied into each MC output for normalization,
+including when the skim selects no events.
 
 `--variations` takes a comma-separated list and writes one ROOT file per requested variation. Supported names are `nominal`, `jes_up`, `jes_down`, `jer_up`, `jer_down`, `met_up`, `met_down`, `muon_scale_up`, `muon_scale_down`, `muon_smear_up`, and `muon_smear_down`.
 

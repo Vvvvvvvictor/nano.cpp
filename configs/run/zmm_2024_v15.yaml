@@ -8,11 +8,12 @@ extends:
 era: "2024"
 nano_version: "v15"
 
-preselection: Sum$(Muon_pt>15 && abs(Muon_eta)<2.4)>1 && nFatJet>0
+preselection: Sum$(Muon_pt>15 && abs(Muon_eta)<2.4)>1
 
 required_triggers:
   - HLT_Mu50
-  - HLT_TkMu50
+  - HLT_CascadeMu100
+  - HLT_HighPtTkMu100
 
 # Keep recoil-jet kinematics without tagger scores or subjet details.
 output:
@@ -21,6 +22,10 @@ output:
 stored_tagger_names: []
 
 additional_read_branches:
+  - TrigObj_id
+  - TrigObj_eta
+  - TrigObj_phi
+  - TrigObj_filterBits
   - LHE_Vpt
   - LHEPart_pdgId
   - LHEPart_pt
@@ -37,4 +42,5 @@ muon_corrections:
 
 channels:
   zmm:
+    require_fatjet: true  # Require a cleaned, muon-separated AK8 jet with pt > 200 GeV.
     nlo_ewk_payload_dir: data/k-factors  # TODO: Check whether changes are needed when adapting to Run 2.

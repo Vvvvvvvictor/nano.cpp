@@ -193,7 +193,7 @@ std::vector<BranchSpec> HeavyFlavBaseProducer::default_schema(const ProducerConf
   };
 
   for (const auto &branch : config.read_branches) {
-    add_branch(branch, true);
+    add_branch(branch, branch.rfind("TrigObj_", 0) != 0);
   }
   return specs;
 }
@@ -241,7 +241,8 @@ void HeavyFlavBaseProducer::select_leptons(Event &event) const {
 // extras are attached to the event by object index in analyze_common(), so
 // freshly constructed FatJet handles can still read those common attributes
 // while using the current variation's corrected pt/mass extras.
-void HeavyFlavBaseProducer::apply_jme_and_select_jets(Event &event, const JmeEventResult &jme_result, JmeVariation variation) const {
+void HeavyFlavBaseProducer::apply_jme_and_select_jets(Event &event, const JmeEventResult &jme_result, JmeVariation variation,
+                                                     float fatjet_abs_eta_max) const {
   jme_corrector_->apply_event(event, jme_result, variation);
 
   auto fatjets = event.collection(fatjet_name_).objects();
@@ -264,7 +265,8 @@ void HeavyFlavBaseProducer::apply_jme_and_select_jets(Event &event, const JmeEve
   }
 
   fatjets = filter_objects(sort_by_pt(std::move(fatjets)), [&](const auto &fj) {
-    return fj.pt() > 200.0f && std::abs(fj.eta()) < 2.4f && pass_jet_id(fj, config_.nano_version, false);
+    return fj.pt() > 200.0f && std::abs(fj.eta()) < fatjet_abs_eta_max &&
+           pass_jet_id(fj, config_.nano_version, false);
   });
   ak4jets = filter_objects(sort_by_pt(std::move(ak4jets)), [&](const auto &jet) {
     return jet.pt() > 25.0f && std::abs(jet.eta()) < 2.4f && pass_jet_id(jet, config_.nano_version, true);

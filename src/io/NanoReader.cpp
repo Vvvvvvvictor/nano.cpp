@@ -107,6 +107,9 @@ void NanoReader::bind_branches() {
           case BranchType::kVecUInt16:
             fields_[spec.name] = make_vector_field<std::uint16_t>();
             break;
+          case BranchType::kVecUInt64:
+            fields_[spec.name] = make_vector_field<std::uint64_t>();
+            break;
           case BranchType::kVecInt16:
             fields_[spec.name] = make_vector_field<std::int16_t>();
             break;
@@ -162,6 +165,11 @@ void NanoReader::bind_branches() {
         fields_[spec.name] = make_vector_field<std::uint16_t>();
         loaders_.push_back(std::make_unique<ArrayLoader<UShort_t, std::uint16_t>>(
             *reader_, spec.name, std::get<std::shared_ptr<std::vector<std::uint16_t>>>(fields_[spec.name])));
+        break;
+      case BranchType::kVecUInt64:
+        fields_[spec.name] = make_vector_field<std::uint64_t>();
+        loaders_.push_back(std::make_unique<ArrayLoader<ULong64_t, std::uint64_t>>(
+            *reader_, spec.name, std::get<std::shared_ptr<std::vector<std::uint64_t>>>(fields_[spec.name])));
         break;
       case BranchType::kVecInt16:
         fields_[spec.name] = make_vector_field<std::int16_t>();

@@ -14,14 +14,12 @@
 #   --set channels.minimal.leading_fatjet_pt_min=500
 #   --set btag.v15.2024.medium=0.13
 
-# Output-level optional branches. Keep large vector branches disabled by
-# default and enable them in a channel card or with `--set` when needed.
+# Output defaults shared by every channel and year.
 output:
-  # Copy the input `LHEScaleWeight` vector into nominal output. This is useful
-  # for MC validation or scale-envelope studies. If enabled for data or an input
-  # without the branch, the output branch is present and filled with an empty
-  # vector.
-  include_lhe_weights: false
+  # Preserve both LHEPdfWeight and LHEScaleWeight in nominal MC. Source vector
+  # lengths are retained. Data and non-nominal outputs contain empty vectors.
+  # Missing source branches in nominal MC are an error, including empty skims.
+  include_lhe_weights: true
   # Register and fill subjet detail branches.
   fill_subjet_info: true
 

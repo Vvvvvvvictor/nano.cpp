@@ -16,26 +16,22 @@ namespace nano {
  *
  * Event selection implemented in this producer
  * - Apply the configured muon scale correction and MC resolution smearing.
- * - Require exactly two muons with pt > 30 GeV, |eta| < 2.4, and
- *   `highPtId == 2` (global high-pt ID).
+ * - Require exactly two muons with pt > 20 GeV and |eta| < 2.4.
+ *   Use tightId below 200 GeV and either high-pT ID at or above 200 GeV.
  * - Apply no isolation cut to the selected pair; mini-isolation is output only.
- * - Veto additional loose-ID muons with pt > 15 GeV and |eta| < 2.4.
- * - Require the selected muons to have opposite charges and leading pt >= 60 GeV.
- * - Require dimuon pt >= 400 GeV and 70 <= mass <= 110 GeV.
+ * - Require opposite charges, dimuon pt >= 400 GeV and 75 <= mass <= 105 GeV.
  * - Build loose-lepton collections for jet cleaning through shared
  *   base-producer helpers, using nominal corrected muon momenta.
  * - Compute AK4/AK8/SubJet JME corrections once, then apply the requested
  *   variation before selecting the cleaned AK8 jets and corrected MET.
- * - Require at least one cleaned AK8 jet with pt > 200 GeV, |eta| < 2.4,
- *   the base-producer jet ID, and DeltaR > 0.8 from both selected muons.
+ * - When channels.zmm.require_fatjet is enabled (the default), require at
+ *   least one cleaned AK8 jet with pt > 200 GeV, |eta| < 2.4, the base
+ *   jet ID, and DeltaR > 0.8 from both selected muons.
  * - Keep only the leading separated AK8 jet for output.
- * - Store the configured muon-trigger OR decision without applying a trigger
- *   veto in this producer.
- * - On MC, store the event trigger-OR SF for selected muons with pt >= 52 GeV
- *   and the product of global high-pt ID SFs separately from genWeight.
- *   The HLT payload denominator includes TkIsoLoose despite the absence of
- *   a pair isolation cut. Store independent stat/syst shifts, efficiency-stat
- *   shifts and HLT validity/source; recompute SFs for each selected muon state.
+ * - Store the matched trigger decision in passMuTrig. Match within DeltaR < 0.1
+ *   and require muon pt > 55 GeV for Mu50 or > 105 GeV for the Mu100 paths.
+ * - On MC, switch ID and trigger SF payloads at 200 GeV. Multiply the ID SFs
+ *   and combine eligible trigger SFs as SF1 + SF2 - SF1*SF2.
  */
 
 HeavyFlavZmmSampleProducer::HeavyFlavZmmSampleProducer(ProducerConfig config)
@@ -44,7 +40,12 @@ HeavyFlavZmmSampleProducer::HeavyFlavZmmSampleProducer(ProducerConfig config)
         return config;
       }()),
       nlo_ew_weight_producer_(config_),
-      muon_corrector_(config_) {}
+      muon_corrector_(config_, /*load_trigger_efficiencies=*/false) {
+  const auto it = config_.channel_options.bools.find("require_fatjet");
+  if (it != config_.channel_options.bools.end()) {
+    require_fatjet_ = it->second;
+  }
+}
 
 void HeavyFlavZmmSampleProducer::begin_file() {
   HeavyFlavBaseProducer::begin_file();
@@ -83,18 +84,38 @@ JmeVariation muon_selection_variation(JmeVariation variation) {
   return JmeVariation::Nominal;
 }
 
+bool pass_matched_muon_trigger(Event &event, const std::vector<ObjectView> &muons) {
+  const bool fired_mu50 = safe_bool(event, "HLT_Mu50");
+  const bool fired_mu100 = safe_bool(event, "HLT_CascadeMu100") || safe_bool(event, "HLT_HighPtTkMu100");
+  if (!fired_mu50 && !fired_mu100) {
+    return false;
+  }
+  const auto trigger_objects = event.collection("TrigObj").objects();
+  for (const auto &muon : muons) {
+    // NanoAOD muon filter bits 10 and 11 group the Mu50 and Mu100 legs.
+    const auto bits = ((fired_mu50 && muon.pt() > 55.f) ? (1ULL << 10) : 0ULL) |
+                      ((fired_mu100 && muon.pt() > 105.f) ? (1ULL << 11) : 0ULL);
+    if (bits && std::any_of(trigger_objects.begin(), trigger_objects.end(), [&](const ObjectView &object) {
+          return object.get<std::int32_t>("id") == 13 &&
+                 (object.get<std::uint64_t>("filterBits") & bits) && delta_r(muon, object) < 0.1f;
+        })) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 // Compute muon momentum corrections once and cache the dimuon selection for
 // each requested muon state.
 bool HeavyFlavZmmSampleProducer::analyze_common(Event &event) {
   auto muons = event.collection("Muon").objects();
-  // Muon scale/smear variations leave eta and ID unchanged. Reject impossible
-  // pairs before evaluating any momentum corrections.
-  const auto high_pt_count = std::count_if(muons.begin(), muons.end(), [](const auto &muon) {
-    return std::abs(muon.eta()) < 2.4f && muon.template get<std::int32_t>("highPtId") == 2;
+  // Either ID can qualify, depending on the corrected pT in each variation.
+  const auto id_count = std::count_if(muons.begin(), muons.end(), [](const ObjectView &muon) {
+    return std::abs(muon.eta()) < 2.4f && (muon.get<bool>("tightId") || muon.get<std::int32_t>("highPtId") > 0);
   });
-  if (high_pt_count < 2) {
+  if (id_count < 2) {
     return false;
   }
   // Compute corrected muon pT once, including MC resolution smearing and the
@@ -131,37 +152,23 @@ void HeavyFlavZmmSampleProducer::select_muons(Event &event, JmeVariation variati
   auto muons = event.collection("Muon").objects();
   muon_corrector_.apply(event.get<MuonVariationsCalculator::result_t>("muon_variations"), variation, muons);
   std::vector<ObjectView> selected;
-  // Require exactly two global high-pt-ID muons with pT > 30 GeV and |eta| < 2.4.
   for (auto &muon : muons) {
-    if (muon.pt() > 30.0f && std::abs(muon.eta()) < 2.4f &&
-        muon.get<std::int32_t>("highPtId") == 2) {
+    const bool pass_id = muon.pt() < muon_high_pt_threshold ? muon.get<bool>("tightId")
+                                                           : muon.get<std::int32_t>("highPtId") > 0;
+    if (muon.pt() > 20.f && std::abs(muon.eta()) < 2.4f && pass_id) {
       selected.push_back(muon);
     }
   }
   if (selected.size() != 2U) {
     return;
   }
-  // Veto any additional loose-ID muon with pT > 15 GeV and |eta| < 2.4.
-  for (const auto &muon : muons) {
-    const auto is_selected = std::any_of(
-        selected.begin(), selected.end(), [&muon](const auto &candidate) {
-          return candidate.index() == muon.index();
-        });
-    if (!is_selected && muon.pt() > 15.0f && std::abs(muon.eta()) < 2.4f &&
-        muon.get<bool>("looseId")) {
-      return;
-    }
-  }
-  // Order by pT; require leading/subleading pT >= 60/30 GeV and opposite charges.
   std::sort(selected.begin(), selected.end(), [](const auto &a, const auto &b) { return a.pt() > b.pt(); });
-  if (selected[0].pt() < 60.0f || selected[1].pt() < 30.0f ||
-      selected[0].get<std::int32_t>("charge") * selected[1].get<std::int32_t>("charge") > 0) {
+  if (selected[0].get<std::int32_t>("charge") * selected[1].get<std::int32_t>("charge") >= 0) {
     return;
   }
 
-  // Require dimuon pT >= 400 GeV and mass in [70, 110] GeV.
   const auto z = selected[0].p4() + selected[1].p4();
-  if (z.Pt() < 400.0 || z.M() < 70.0 || z.M() > 110.0) {
+  if (z.Pt() < 400.0 || z.M() < 75.0 || z.M() > 105.0) {
     return;
   }
   event.set("muon_indices_" + suffix, std::vector<std::size_t>{selected[0].index(), selected[1].index()});
@@ -195,7 +202,7 @@ bool HeavyFlavZmmSampleProducer::analyze_variation(Event &event, const JmeEventR
       break;  // fatjets are already sorted by corrected pT.
     }
   }
-  if (probe_jets.empty()) {
+  if (require_fatjet_ && probe_jets.empty()) {
     return false;
   }
   // Produce EWK weights after the selection.
@@ -206,7 +213,7 @@ bool HeavyFlavZmmSampleProducer::analyze_variation(Event &event, const JmeEventR
   fill_base_event_info(event, variation);
   fill_fatjet_info(event, probe_jets, 0U);
   nlo_ew_weight_producer_.fill(event, out_);
-  out_.fill("passMuTrig", pass_trigger(event, config_.required_triggers));
+  out_.fill("passMuTrig", pass_matched_muon_trigger(event, muons));
 
   const auto &z = event.get<LorentzVector>("leptonicZ");
   out_.fill("leptonicZ_pt", static_cast<float>(z.Pt()));
@@ -226,11 +233,8 @@ bool HeavyFlavZmmSampleProducer::analyze_variation(Event &event, const JmeEventR
     const auto hlt_key = "muonHLTSF_" + suffix;
     const auto id_key = "muonIDSF_" + suffix;
     if (!event.has(hlt_key)) {
-      // The trigger SF denominator includes TkIsoLoose; selection keeps no isolation cut.
-      event.set(hlt_key, muon_corrector_.trigger_or_scale_factor(
-          muons, MuonTriggerSF::correction_name(config_.era), 52.0f));
-      // HighPtID is the global high-pt ID; TrackerMuons is the measurement denominator.
-      event.set(id_key, muon_corrector_.scale_factor(muons, "NUM_HighPtID_DEN_TrackerMuons", 10.0f));
+      event.set(hlt_key, muon_corrector_.zmm_trigger_scale_factor(muons));
+      event.set(id_key, muon_corrector_.zmm_id_scale_factor(muons));
     }
     const auto &hlt = event.get<MuonSFResult>(hlt_key);
     out_.fill("muonHLTSF_effstat_up", hlt.effstat_up);

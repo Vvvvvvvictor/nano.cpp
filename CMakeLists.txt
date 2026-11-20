@@ -23,7 +23,6 @@ add_library(nanoaodtools_cpp
   src/core/OutputModel.cpp
   src/core/Helpers.cpp
   src/helpers/FatjetGenMatching.cpp
-  src/helpers/FatjetTriggerSF.cpp
   src/helpers/JetMETCorrector.cpp
   src/helpers/JmeVariation.cpp
   src/helpers/MuonTriggerSF.cpp
@@ -57,3 +56,7 @@ add_test(
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/muon_validation_test.py --source-dir ${CMAKE_SOURCE_DIR} --build-dir ${CMAKE_BINARY_DIR} --group muon --max-input-events 5000
 )
 set_tests_properties(muon_validation PROPERTIES TIMEOUT 7200 LABELS "muon;reference;systematics")
+
+add_executable(trigger_probe_test tests/trigger_probe_test.cpp)
+target_link_libraries(trigger_probe_test PRIVATE nanoaodtools_cpp)
+add_test(NAME trigger_probe COMMAND trigger_probe_test)

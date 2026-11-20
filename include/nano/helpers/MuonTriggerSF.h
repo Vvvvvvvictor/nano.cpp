@@ -9,7 +9,7 @@ struct MuonSFResult {
   float nominal = 1.f, stat_up = 1.f, stat_down = 1.f, syst_up = 1.f, syst_down = 1.f;
   float effstat_up = 1.f, effstat_down = 1.f;
   bool valid = true;
-  int source = 0; // 0: no eligible muon/Data; 1: official efficiencies; 2: derived MC efficiency.
+  int source = 0; // 0: no eligible muon/Data; 1: official efficiencies; 2: derived MC; 3: direct SF approximation.
 };
 // Independent of momentum calibration; supports Run 2 SFs with absolute eta.
 class MuonTriggerSF {

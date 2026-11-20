@@ -16,6 +16,7 @@ enum class BranchType {
   kVecBool,
   kVecUInt8,
   kVecUInt16,
+  kVecUInt64,
   kVecInt16,
   kVecInt32,
   kVecFloat
