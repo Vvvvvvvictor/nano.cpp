@@ -18,42 +18,35 @@ namespace nano {
  * - Store nominal=1+delta_EW and alternate weights nominal +/-
  *   0.5*abs(nominal-1), separately from genWeight for downstream weighting.
  *   Data, absent/ambiguous bosons and boson pt below threshold retain unity.
- * - Cache once per event and reuse for reconstruction variations. lheVpt is
- *   diagnostic only: prefer finite positive LHE_Vpt, otherwise use a unique
- *   LHE W/Z with finite nonnegative pt; missing/invalid candidates yield -1.
+ * - Cache once per event and reuse for reconstruction variations. The
+ *   lheVpt output copies LHE_Vpt, with a zero-value exception for hadronic
+ *   W/Z samples that store the boson pt only in LHEPart.
  */
 
 namespace {
 
-float get_lhe_v_pt(Event &event) {
-  if (!event.is_mc()) {
+float get_lhe_v_pt(const Event &event) {
+  if (!event.is_mc() || !event.has_physical_branch("LHE_Vpt")) {
     return -1.0f;
   }
-  if (event.has_physical_branch("LHE_Vpt")) {
-    const auto pt = event.scalar<float>("LHE_Vpt");
-    if (std::isfinite(pt) && pt > 0.0f) {
-      return pt;
-    }
-  }
-  // Hadronic W/Z samples can store zero in LHE_Vpt despite a valid LHE boson.
-  if (!event.has_physical_branch("LHEPart_pdgId") || !event.has_physical_branch("LHEPart_pt")) {
-    return -1.0f;
+  const auto lhe_v_pt = event.scalar<float>("LHE_Vpt");
+  if (lhe_v_pt != 0.0f || !event.has_physical_branch("LHEPart_pdgId") ||
+      !event.has_physical_branch("LHEPart_pt")) {
+    return lhe_v_pt;
   }
 
-  float pt = -1.0f;
-  bool found = false;
+  std::optional<float> boson_pt;
   for (const auto &particle : event.collection("LHEPart").objects()) {
     const auto id = std::abs(particle.get<std::int32_t>("pdgId"));
     if (id != 23 && id != 24) {
       continue;
     }
-    if (found) {
-      return -1.0f;
+    if (boson_pt) {
+      return lhe_v_pt;
     }
-    found = true;
-    pt = particle.pt();
+    boson_pt = particle.pt();
   }
-  return std::isfinite(pt) && pt >= 0.0f ? pt : -1.0f;
+  return boson_pt.value_or(lhe_v_pt);
 }
 
 

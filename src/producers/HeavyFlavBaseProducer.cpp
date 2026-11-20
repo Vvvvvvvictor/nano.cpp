@@ -28,8 +28,8 @@ namespace nano {
  * - Channel producers impose the event selection. MET filters and jet-veto
  *   map results are stored as flags here rather than used as event vetoes.
  * - Store genWeight and correction weights separately. With LHE output enabled
- *   (the default), copy LHEScaleWeight/LHEPdfWeight only for nominal MC with
- *   the input branch present; Data and other variations receive empty vectors.
+ *   (the default), copy LHEScaleWeight/LHEPdfWeight for nominal MC.
+ *   Data and other variations receive empty vectors.
  */
 
 namespace {
@@ -344,12 +344,9 @@ void HeavyFlavBaseProducer::fill_base_event_info(Event &event, JmeVariation vari
   out_.fill("metphi", event.get<float>("met_phi"));
   out_.fill("jetVetoFlag", event.has("jetVetoFlag") ? event.get<std::int32_t>("jetVetoFlag") : std::int32_t{-99});
   out_.fill("genWeight", event.is_mc() ? event.scalar<float>("genWeight") : 1.0f);
-  if (config_.include_lhe_weights) {
-    for (const auto *branch : {"LHEScaleWeight", "LHEPdfWeight"}) {
-      out_.fill(branch, event.is_mc() && variation == JmeVariation::Nominal && event.has_physical_branch(branch)
-                            ? event.vector<float>(branch)
-                            : std::vector<float>{});
-    }
+  if (config_.include_lhe_weights && event.is_mc() && variation == JmeVariation::Nominal) {
+    out_.fill("LHEScaleWeight", event.vector<float>("LHEScaleWeight"));
+    out_.fill("LHEPdfWeight", event.vector<float>("LHEPdfWeight"));
   }
   pu_weight_producer_->fill(event, out_);
 }

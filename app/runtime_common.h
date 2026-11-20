@@ -459,27 +459,18 @@ inline std::vector<Long64_t> apply_lumi_mask(TTree &tree, const std::vector<Long
 inline std::vector<Long64_t> build_entry_list(TTree &tree, const std::string &cut, long long max_entries,
                                               const LumiMask *lumi_mask = nullptr) {
   const auto total = tree.GetEntries();
-  std::string effective_cut = cut;
-  if (max_entries >= 0) {
-    const auto cap_cut = "Entry$<" + std::to_string(max_entries);
-    effective_cut = effective_cut.empty() ? cap_cut : "(" + effective_cut + ")&&(" + cap_cut + ")";
-  }
-
-  if (effective_cut.empty()) {
+  const auto scan_entries = max_entries < 0 ? total : std::min<Long64_t>(total, max_entries);
+  if (cut.empty() || scan_entries == 0) {
     std::vector<Long64_t> entries;
-    const auto n = max_entries < 0 ? total : std::min<Long64_t>(total, max_entries);
-    entries.reserve(static_cast<std::size_t>(n));
-    for (Long64_t i = 0; i < n; ++i) {
+    entries.reserve(static_cast<std::size_t>(scan_entries));
+    for (Long64_t i = 0; i < scan_entries; ++i) {
       entries.push_back(i);
     }
     return lumi_mask ? apply_lumi_mask(tree, entries, *lumi_mask) : entries;
   }
 
   const std::string list_name = "entrylist_tmp";
-  // max_entries limits raw entries, so avoid scanning the rest of a remote
-  // file just to reject it with Entry$. This keeps smoke runs bounded in I/O.
-  const auto scan_entries = max_entries < 0 ? total : std::min<Long64_t>(total, max_entries);
-  tree.Draw((">>" + list_name).c_str(), effective_cut.c_str(), "entrylist", scan_entries);
+  tree.Draw((">>" + list_name).c_str(), cut.c_str(), "entrylist", scan_entries);
   auto *elist = dynamic_cast<TEntryList *>(gDirectory->Get(list_name.c_str()));
   std::vector<Long64_t> entries;
   if (!elist) {

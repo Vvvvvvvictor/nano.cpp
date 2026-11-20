@@ -161,6 +161,11 @@ the source without an era-specific PDF/scale prescription.
 The full input `Runs` tree is copied into each MC output for normalization,
 including when the skim selects no events.
 
+In Zbb and Zmm, `lheVpt` copies the NanoAOD `LHE_Vpt` value. Some hadronic
+W/Z samples store zero in this branch. A zero is replaced by the pT of the
+unique W or Z in `LHEPart` when available. Data and inputs without
+`LHE_Vpt` use `-1`.
+
 `--variations` takes a comma-separated list and writes one ROOT file per requested variation. Supported names are `nominal`, `jes_up`, `jes_down`, `jer_up`, `jer_down`, `met_up`, `met_down`, `muon_scale_up`, `muon_scale_down`, `muon_smear_up`, and `muon_smear_down`.
 
 ## Run Validation

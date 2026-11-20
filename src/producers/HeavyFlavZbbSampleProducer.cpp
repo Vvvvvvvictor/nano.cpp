@@ -2,7 +2,6 @@
 
 #include "nano/core/Collection.h"
 #include "nano/core/Helpers.h"
-#include "nano/core/TriggerProbe.h"
 
 #include <algorithm>
 #include <cmath>
@@ -114,14 +113,6 @@ bool HeavyFlavZbbSampleProducer::analyze_variation(Event &event, const JmeEventR
   if (fatjets.size() < 2U) {
     return false;
   }
-  // Choose from all cleaned jets before Xbb ranking for this JME variation.
-  TriggerProbe probe;
-  if (config_.nano_version == "v15") {
-    for (const auto &jet : fatjets) {
-      probe.consider(jet.pt(), jet.get<float>("rawMass") * jet.get<float>("globalParT3_massCorrX2p"),
-                     jet.get<float>("msoftdrop"));
-    }
-  }
   auto candidate = fatjets.end();
   float best_score = -std::numeric_limits<float>::infinity();
   for (auto jet = fatjets.begin(); jet != fatjets.end(); ++jet) {
@@ -192,9 +183,13 @@ bool HeavyFlavZbbSampleProducer::analyze_variation(Event &event, const JmeEventR
   // keep them separate from genWeight for downstream event weighting.
   fill_base_event_info(event, variation);
   nlo_ew_weight_producer_.fill(event, out_);
-  out_.fill("trigger_probe_pt", probe.pt);
-  out_.fill("trigger_probe_gptmass_x2p", probe.mass);
-  out_.fill("trigger_probe_msd", probe.msd);
+  if (config_.nano_version == "v15") {
+    // The shared selection keeps the cleaned jets in corrected pT order.
+    const auto &probe = fatjets.front();
+    out_.fill("trigger_probe_pt", probe.pt());
+    out_.fill("trigger_probe_gptmass_x2p", probe.get<float>("rawMass") * probe.get<float>("globalParT3_massCorrX2p"));
+    out_.fill("trigger_probe_msd", probe.get<float>("msoftdrop"));
+  }
   for (std::size_t index = 0; index < selected.size(); ++index) {
     fill_fatjet_info(event, selected, index);
     const auto prefix = "fj_" + std::to_string(index + 1U) + "_";
